@@ -40,11 +40,12 @@ input[type="number"], select {
   gap: 6px;
 }
 .number-control input {
-  width: 70px; /* 入力欄を半分程度に */
+  width: 70px;     /* コンパクト */
   text-align: right;
 }
 .number-control span.unit {
   margin-left: 4px;
+  white-space: nowrap;
 }
 .number-control button {
   width: 34px;
@@ -61,7 +62,7 @@ input[type="number"], select {
 .muted { font-size: 12.5px; color: #666; }
 .hr { height: 1px; background: #eee; margin: 12px 0; }
 
-.result b { font-size: 18px; }
+.result b { font-size: 24px; }
 .mono { font-variant-numeric: tabular-nums; }
 
 @media (max-width:520px){
@@ -77,12 +78,26 @@ input[type="number"], select {
   <div class="row">
     <div>
       <label>レシピは何人分？</label>
-      <input id="recipeServings" type="number" min="1" value="1">
+      <div class="number-control">
+        <button type="button" onclick="stepPeople('recipeServings',-1)">−</button>
+        <input id="recipeServings" type="number" min="1" step="1" value="1" inputmode="numeric">
+        <button type="button" onclick="stepPeople('recipeServings',1)">＋</button>
+        <span class="unit">人分</span>
+      </div>
     </div>
+
     <div>
       <label>作りたいのは何人分？</label>
-      <input id="targetServings" type="number" min="1" value="1">
+      <div class="number-control">
+        <button type="button" onclick="stepPeople('targetServings',-1)">−</button>
+        <input id="targetServings" type="number" min="1" step="1" value="1" inputmode="numeric">
+        <button type="button" onclick="stepPeople('targetServings',1)">＋</button>
+        <span class="unit">人分</span>
+      </div>
     </div>
+  </div>
+  <div class="muted" style="margin-top:8px;">
+    ※ 人数は最低1（0やマイナスになりません）
   </div>
 </div>
 
@@ -96,9 +111,9 @@ input[type="number"], select {
     <div>
       <label>大さじ</label>
       <div class="number-control">
-        <button onclick="step('tbsp',-0.5)">−</button>
-        <input id="tbsp" type="number" step="0.5" value="0">
-        <button onclick="step('tbsp',0.5)">＋</button>
+        <button type="button" onclick="stepMeasure('tbsp',-0.5)">−</button>
+        <input id="tbsp" type="number" step="0.5" value="0" inputmode="decimal">
+        <button type="button" onclick="stepMeasure('tbsp',0.5)">＋</button>
         <span class="unit">杯</span>
       </div>
     </div>
@@ -106,9 +121,9 @@ input[type="number"], select {
     <div>
       <label>大さじ1/2</label>
       <div class="number-control">
-        <button onclick="step('tbspHalf',-1)">−</button>
-        <input id="tbspHalf" type="number" step="1" value="0">
-        <button onclick="step('tbspHalf',1)">＋</button>
+        <button type="button" onclick="stepMeasure('tbspHalf',-1)">−</button>
+        <input id="tbspHalf" type="number" step="1" value="0" inputmode="numeric">
+        <button type="button" onclick="stepMeasure('tbspHalf',1)">＋</button>
         <span class="unit">杯</span>
       </div>
     </div>
@@ -118,9 +133,9 @@ input[type="number"], select {
     <div>
       <label>小さじ</label>
       <div class="number-control">
-        <button onclick="step('tsp',-0.5)">−</button>
-        <input id="tsp" type="number" step="0.5" value="0">
-        <button onclick="step('tsp',0.5)">＋</button>
+        <button type="button" onclick="stepMeasure('tsp',-1)">−</button>
+        <input id="tsp" type="number" step="1" value="0" inputmode="numeric">
+        <button type="button" onclick="stepMeasure('tsp',1)">＋</button>
         <span class="unit">杯</span>
       </div>
     </div>
@@ -128,9 +143,9 @@ input[type="number"], select {
     <div>
       <label>小さじ1/2</label>
       <div class="number-control">
-        <button onclick="step('tspHalf',-1)">−</button>
-        <input id="tspHalf" type="number" step="1" value="0">
-        <button onclick="step('tspHalf',1)">＋</button>
+        <button type="button" onclick="stepMeasure('tspHalf',-1)">−</button>
+        <input id="tspHalf" type="number" step="1" value="0" inputmode="numeric">
+        <button type="button" onclick="stepMeasure('tspHalf',1)">＋</button>
         <span class="unit">杯</span>
       </div>
     </div>
@@ -138,9 +153,9 @@ input[type="number"], select {
     <div>
       <label>小さじ1/4</label>
       <div class="number-control">
-        <button onclick="step('tspQuarter',-1)">−</button>
-        <input id="tspQuarter" type="number" step="1" value="0">
-        <button onclick="step('tspQuarter',1)">＋</button>
+        <button type="button" onclick="stepMeasure('tspQuarter',-1)">−</button>
+        <input id="tspQuarter" type="number" step="1" value="0" inputmode="numeric">
+        <button type="button" onclick="stepMeasure('tspQuarter',1)">＋</button>
         <span class="unit">杯</span>
       </div>
     </div>
@@ -165,39 +180,74 @@ const $ = id => document.getElementById(id);
 
 Object.keys(DENSITY).forEach(k=>{
   const o=document.createElement("option");
-  o.value=k;o.textContent=k;
+  o.value=k; o.textContent=k;
   $("condiment").appendChild(o);
 });
 
-function clampPeople(el){
-  if(el.value < 1 || !el.value) el.value = 1;
+function toNum(v){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function step(id,delta){
-  const i=$(id);
-  i.value = Math.max(0, (+i.value||0) + delta);
+function clampMin1(id){
+  const el = $(id);
+  const v = Math.floor(toNum(el.value));
+  el.value = Math.max(1, v);
+}
+
+function clampMin0(id){
+  const el = $(id);
+  const v = toNum(el.value);
+  el.value = Math.max(0, v);
+}
+
+function stepPeople(id, delta){
+  const el = $(id);
+  const now = Math.floor(toNum(el.value));
+  el.value = Math.max(1, now + delta);
+  calc();
+}
+
+function stepMeasure(id, delta){
+  const el = $(id);
+  const now = toNum(el.value);
+  const next = Math.max(0, now + delta);
+
+  // 大さじだけ 0.5 刻みを維持（誤差対策で丸め）
+  if (id === "tbsp") {
+    el.value = Math.round(next * 2) / 2;
+  } else {
+    // それ以外は整数運用（小さじは整数化、1/2・1/4もカウントは整数）
+    el.value = Math.round(next);
+  }
   calc();
 }
 
 function round1(n){ return Math.round(n*10)/10; }
 
 function calc(){
-  clampPeople($("recipeServings"));
-  clampPeople($("targetServings"));
+  // 人数は必ず 1以上
+  clampMin1("recipeServings");
+  clampMin1("targetServings");
 
-  const factor = $("targetServings").value / $("recipeServings").value;
+  // 分量は 0以上
+  ["tbsp","tbspHalf","tsp","tspHalf","tspQuarter"].forEach(clampMin0);
+
+  const factor = toNum($("targetServings").value) / toNum($("recipeServings").value);
+
   const cc =
-    $("tbsp").value*CC.tbsp +
-    $("tbspHalf").value*CC.tbspHalf +
-    $("tsp").value*CC.tsp +
-    $("tspHalf").value*CC.tspHalf +
-    $("tspQuarter").value*CC.tspQuarter;
+    toNum($("tbsp").value)      * CC.tbsp +
+    toNum($("tbspHalf").value)  * CC.tbspHalf +
+    toNum($("tsp").value)       * CC.tsp +
+    toNum($("tspHalf").value)   * CC.tspHalf +
+    toNum($("tspQuarter").value)* CC.tspQuarter;
 
   const total = cc * factor;
+
   $("outTbsp").textContent = round1(total/15);
   $("outTsp").textContent  = round1(total/5);
   $("outCc").textContent   = round1(total);
-  $("outG").textContent    = round1(total*DENSITY[$("condiment").value]/100);
+  $("outG").textContent    = round1(total * DENSITY[$("condiment").value] / 100);
 }
 
 document.querySelectorAll("input,select").forEach(e=>e.addEventListener("input",calc));
