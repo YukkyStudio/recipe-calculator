@@ -41,7 +41,7 @@ select {
   gap: 6px;
 }
 .number-control input {
-  width: 70px;              /* 入力欄はコンパクト */
+  width: 70px;
   text-align: right;
   font-size: 16px;
   padding: 8px;
@@ -83,11 +83,11 @@ select {
 .reset-btn:active{ transform: translateY(1px); }
 
 /* 結果表示 */
-.result { font-size: 1.5em; }          /* 1.5倍 */
+.result { font-size: 1.5em; }
 .result-row {
   display: flex;
   justify-content: space-between;
-  gap: 6px;                              /* 間隔を半分 */
+  gap: 6px;               /* 間隔を半分 */
 }
 .result-item { flex: 1; }
 .result b { font-size: 1.2em; }
@@ -144,7 +144,7 @@ select {
 
   <div class="row3">
     <div>
-      <label>大さじ</label>
+      <label>大さじ（整数）</label>
       <div class="number-control">
         <button class="btn-step" data-target="tbsp" data-delta="-1" type="button">−</button>
         <input id="tbsp" type="number" value="0" readonly>
@@ -200,8 +200,8 @@ select {
 
   <div class="result mono">
     <div class="result-row">
-      <div class="result-item">大さじ：<b id="outTbsp">0</b> 杯</div>
-      <div class="result-item">小さじ：<b id="outTsp">0</b> 杯</div>
+      <div class="result-item">計量：<b id="outMeasure">0</b></div>
+      <div class="result-item"></div>
     </div>
     <div class="result-row">
       <div class="result-item">容量：<b id="outCc">0</b> cc</div>
@@ -220,7 +220,15 @@ const DENSITY = {
   "ケチャップ":140,
   "ソース":120
 };
-const CC = { tbsp:15, tbspHalf:7.5, tsp:5, tspHalf:2.5, tspQuarter:1.25 };
+
+const CC = {
+  tbsp: 15,
+  tbspHalf: 7.5,
+  tsp: 5,
+  tspHalf: 2.5,
+  tspQuarter: 1.25
+};
+
 const $ = id => document.getElementById(id);
 
 Object.keys(DENSITY).forEach(k=>{
@@ -246,24 +254,56 @@ function applyStep(id, delta){
   calc();
 }
 
+/**
+ * ccを「大さじ・小さじ・小さじ1/2・小さじ1/4」に分解して文字列化
+ * 小さじ1/4(=1.25cc)単位に丸めて実用優先
+ */
+function measureTextFromCc(totalCc){
+  const qUnit = CC.tspQuarter; // 1.25cc
+  const totalQ = Math.max(0, Math.round(totalCc / qUnit)); // 1/4小さじ単位
+
+  const Q_PER_TSP = 4;    // 小さじ1 = 4q
+  const Q_PER_TBSP = 12;  // 大さじ1 = 小さじ3 = 12q
+
+  let q = totalQ;
+
+  const tbsp = Math.floor(q / Q_PER_TBSP);
+  q -= tbsp * Q_PER_TBSP;
+
+  const tsp = Math.floor(q / Q_PER_TSP);
+  q -= tsp * Q_PER_TSP;
+
+  const tspHalf = Math.floor(q / 2); // 2q
+  q -= tspHalf * 2;
+
+  const tspQuarter = q; // 0 or 1
+
+  const parts = [];
+  if (tbsp) parts.push(`大さじ${tbsp}`);
+  if (tsp) parts.push(`小さじ${tsp}`);
+  if (tspHalf) parts.push(`小さじ1/2 ${tspHalf}`);
+  if (tspQuarter) parts.push(`小さじ1/4 ${tspQuarter}`);
+
+  return parts.length ? parts.join(" ") : "0";
+}
+
 function calc(){
   const recipe = Math.max(1, Number($("recipeServings").value));
   const target = Math.max(1, Number($("targetServings").value));
   const factor = target / recipe;
 
-  const cc =
+  const baseCc =
     Number($("tbsp").value)       * CC.tbsp +
     Number($("tbspHalf").value)   * CC.tbspHalf +
     Number($("tsp").value)        * CC.tsp +
     Number($("tspHalf").value)    * CC.tspHalf +
     Number($("tspQuarter").value) * CC.tspQuarter;
 
-  const total = cc * factor;
+  const totalCc = baseCc * factor;
 
-  $("outTbsp").textContent = round1(total / 15);
-  $("outTsp").textContent  = round1(total / 5);
-  $("outCc").textContent   = round1(total);
-  $("outG").textContent    = round1(total * DENSITY[$("condiment").value] / 100);
+  $("outMeasure").textContent = measureTextFromCc(totalCc);
+  $("outCc").textContent = round1(totalCc);
+  $("outG").textContent  = round1(totalCc * DENSITY[$("condiment").value] / 100);
 }
 
 // ±ボタン
@@ -273,7 +313,7 @@ document.querySelectorAll(".btn-step").forEach(btn=>{
   });
 });
 
-// リセットボタン（調味料の杯数だけ）
+// リセット（調味料の杯数だけ）
 $("btnReset").addEventListener("click", ()=>{
   setZeroMeasures();
   calc();
