@@ -87,7 +87,7 @@ select {
 .result-row {
   display: flex;
   justify-content: space-between;
-  gap: 6px;               /* 間隔を半分 */
+  gap: 6px;
 }
 .result-item { flex: 1; }
 .result b { font-size: 1.2em; }
@@ -144,7 +144,7 @@ select {
 
   <div class="row3">
     <div>
-      <label>大さじ（整数）</label>
+      <label>大さじ</label>
       <div class="number-control">
         <button class="btn-step" data-target="tbsp" data-delta="-1" type="button">−</button>
         <input id="tbsp" type="number" value="0" readonly>
@@ -166,7 +166,7 @@ select {
 
   <div class="row3" style="margin-top:10px;">
     <div>
-      <label>小さじ</label>
+      <label>小さじ1</label>
       <div class="number-control">
         <button class="btn-step" data-target="tsp" data-delta="-1" type="button">−</button>
         <input id="tsp" type="number" value="0" readonly>
@@ -255,36 +255,78 @@ function applyStep(id, delta){
 }
 
 /**
- * ccを「大さじ・小さじ・小さじ1/2・小さじ1/4」に分解して文字列化
- * 小さじ1/4(=1.25cc)単位に丸めて実用優先
+ * 完成版：cc → 表示文字列
+ *
+ * 表示ポリシー：
+ * 1) 大さじ入力（tbsp / tbspHalf）がある場合：
+ *    - 12Q未満でも「大さじ1/2」を表示してよい（例：大さじ1/2 1杯 → 大さじ 1/2）
+ * 2) 大さじ入力がない場合：
+ *    - 大さじ1未満（12Q未満）は小さじで表示（例：小さじ1/2×3(=6Q) → 小さじ1 小さじ1/2）
+ * 3) 小さじ側は必ず繰り上げ完了（1/4→1/2→1）
+ * 4) 小さじ3 → 大さじ1 へ繰り上げ
+ * 5) 分数はNBSPで改行防止
  */
-function measureTextFromCc(totalCc){
+function measureTextFromCc(totalCc, preferTbspUnder1){
+  const NBSP = "\u00A0";
   const qUnit = CC.tspQuarter; // 1.25cc
-  const totalQ = Math.max(0, Math.round(totalCc / qUnit)); // 1/4小さじ単位
-
-  const Q_PER_TSP = 4;    // 小さじ1 = 4q
-  const Q_PER_TBSP = 12;  // 大さじ1 = 小さじ3 = 12q
+  const totalQ = Math.max(0, Math.round(totalCc / qUnit)); // 小さじ1/4単位（整数）
 
   let q = totalQ;
 
-  const tbsp = Math.floor(q / Q_PER_TBSP);
-  q -= tbsp * Q_PER_TBSP;
+  let tbsp = 0;
+  let tbspHalf = 0;
 
-  const tsp = Math.floor(q / Q_PER_TSP);
-  q -= tsp * Q_PER_TSP;
+  const allowTbsp = (q >= 12) || !!preferTbspUnder1;
 
-  const tspHalf = Math.floor(q / 2); // 2q
-  q -= tspHalf * 2;
+  if (allowTbsp) {
+    tbsp = Math.floor(q / 12);
+    q %= 12;
 
-  const tspQuarter = q; // 0 or 1
+    // 大さじは「1/2」まで（1/4は作らない）
+    tbspHalf = Math.floor(q / 6); // 0..1
+    q %= 6;
+  }
+
+  // 残りを小さじへ（整数/1/2/1/4）
+  let tsp = Math.floor(q / 4);
+  q %= 4;
+
+  let tspHalf = Math.floor(q / 2);
+  q %= 2;
+
+  let tspQuarter = q; // 0..1
+
+  // 小さじ側の繰り上げ（同一単位内）
+  if (tspQuarter >= 2) {
+    tspHalf += Math.floor(tspQuarter / 2);
+    tspQuarter %= 2;
+  }
+  if (tspHalf >= 2) {
+    tsp += Math.floor(tspHalf / 2);
+    tspHalf %= 2;
+  }
+
+  // 小さじ3 → 大さじ1 へ繰り上げ
+  let tspQ = tsp * 4 + tspHalf * 2 + tspQuarter;
+  if (tspQ >= 12) {
+    const carry = Math.floor(tspQ / 12);
+    tbsp += carry;
+    tspQ %= 12;
+
+    tsp = Math.floor(tspQ / 4); tspQ %= 4;
+    tspHalf = Math.floor(tspQ / 2); tspQ %= 2;
+    tspQuarter = tspQ;
+  }
 
   const parts = [];
   if (tbsp) parts.push(`大さじ${tbsp}`);
-  if (tsp) parts.push(`小さじ${tsp}`);
-  if (tspHalf) parts.push(`小さじ1/2 ${tspHalf}`);
-  if (tspQuarter) parts.push(`小さじ1/4 ${tspQuarter}`);
+  if (tbspHalf) parts.push(`大さじ${NBSP}1/2`);
 
-  return parts.length ? parts.join(" ") : "0";
+  if (tsp) parts.push(`小さじ${tsp}`);
+  if (tspHalf) parts.push(`小さじ${NBSP}1/2`);
+  if (tspQuarter) parts.push(`小さじ${NBSP}1/4`);
+
+  return parts.length ? parts.join("　") : "0";
 }
 
 function calc(){
@@ -301,7 +343,11 @@ function calc(){
 
   const totalCc = baseCc * factor;
 
-  $("outMeasure").textContent = measureTextFromCc(totalCc);
+  // 大さじ入力があるなら、大さじ1未満でも大さじ1/2表記を許可
+  const preferTbspUnder1 =
+    Number($("tbsp").value) > 0 || Number($("tbspHalf").value) > 0;
+
+  $("outMeasure").textContent = measureTextFromCc(totalCc, preferTbspUnder1);
   $("outCc").textContent = round1(totalCc);
   $("outG").textContent  = round1(totalCc * DENSITY[$("condiment").value] / 100);
 }
